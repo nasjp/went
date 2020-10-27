@@ -1,8 +1,9 @@
 [![Actions Status](https://github.com/nasjp/went/workflows/test/badge.svg)](https://github.com/nasjp/went/actions)
 
-# went
+# Went
+
+Go Compiler
 
 ```sh
-docker-compose build
 docker-compose run --rm test
 ```
