@@ -1,0 +1,14 @@
+version: "3"
+services:
+  went: &went
+    build: .
+    volumes:
+      - .:/went
+    working_dir: /went
+  test:
+    <<: *went
+    command: >
+      bash -c '
+        make
+        make test
+      '
