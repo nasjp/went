@@ -1,26 +1,44 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"unicode"
 )
 
 const (
 	numberOfArgs = 2
 )
 
-var (
-	ErrIncorrectNumberArgument = errors.New("the number of arguments is not correct")
+type TokenKind int
+
+const (
+	TKReserved TokenKind = iota
+	TKNum
+	TKEOF
 )
 
-type ErrUnexpectedChar struct {
-	Message string
+type Token struct {
+	Kind TokenKind
+	Next *Token
+	Val  int
+	Str  []rune
 }
 
-func (e ErrUnexpectedChar) Error() string {
-	return fmt.Sprintf("unexpected char, %s", e.Message)
+func NewToken(kind TokenKind, cur *Token, str []rune) *Token {
+	tok := &Token{
+		Kind: kind,
+		Str:  str,
+	}
+
+	cur.Next = tok
+
+	return tok
 }
+
+// 現在着目しているトークン
+var token *Token
 
 func main() {
 	if err := run(); err != nil {
@@ -38,52 +56,46 @@ func run() error {
 
 	p := os.Args[1]
 
+	var err error
+	if token, err = tokenize(p); err != nil {
+		return err
+	}
+
 	fmt.Println(".intel_syntax noprefix")
 	fmt.Println(".globl main")
 	fmt.Println("main:")
 
-	i, n := strToInt(p)
-
-	if n == 0 {
-		return ErrUnexpectedChar{Message: p}
+	n, err := expectNum()
+	if err != nil {
+		return err
 	}
 
-	fmt.Printf("  mov rax, %d\n", i)
+	fmt.Printf("  mov rax, %d\n", n)
 
-	for i := n; i < len(p); i++ {
-		if p[i] == '+' {
-			i++
-
-			operand, digits := strToInt(p[i:])
-
-			if digits == 0 {
-				return ErrUnexpectedChar{Message: p}
+	for !atEOF() {
+		if consume('+') {
+			operand, err := expectNum()
+			if err != nil {
+				return err
 			}
 
 			fmt.Printf("  add rax, %d\n", operand)
 
-			i += digits - 1
-
 			continue
 		}
 
-		if p[i] == '-' {
-			i++
-
-			operand, digits := strToInt(p[i:])
-
-			if digits == 0 {
-				return ErrUnexpectedChar{Message: p}
+		if consume('-') {
+			operand, err := expectNum()
+			if err != nil {
+				return err
 			}
 
 			fmt.Printf("  sub rax, %d\n", operand)
 
-			i += digits - 1
-
 			continue
 		}
 
-		return ErrUnexpectedChar{Message: p}
+		return ErrUnexpectedChar{}
 	}
 
 	fmt.Println("  ret")
@@ -91,22 +103,110 @@ func run() error {
 	return nil
 }
 
-func strToInt(s string) (int, int) {
+func tokenize(p string) (*Token, error) {
+	head := &Token{}
+	cur := head
+
+	for i := 0; i < len(p); i++ {
+		if unicode.IsSpace(rune(p[i])) {
+			continue
+		}
+
+		if p[i] == '+' || p[i] == '-' {
+			cur = NewToken(TKReserved, cur, []rune{rune(p[i])})
+
+			continue
+		}
+
+		if unicode.IsDigit(rune(p[i])) {
+			n, err := strToInt(p[i:])
+			if err != nil {
+				return nil, err
+			}
+
+			d := calcNumOfIntDigit(n)
+
+			cur = NewToken(TKNum, cur, []rune(p[i:i+d-1]))
+			cur.Val = n
+
+			i += d - 1
+
+			continue
+		}
+
+		return nil, ErrUnexpectedChar{}
+	}
+
+	NewToken(TKEOF, cur, nil)
+
+	return head.Next, nil
+}
+
+// 文字列を整数値まで読み進めるだけ読み進める.
+func strToInt(s string) (int, error) {
 	var (
-		n         int
-		digits    int = 1
-		increment int
+		n      int
+		digits int = 1
+		read   bool
 	)
 
-	for i, c := range s {
+	for _, c := range s {
 		if c < '0' || '9' < c {
 			break
 		}
 
 		n = n*digits + int(c-'0')
 		digits *= 10
-		increment = i + 1
+		read = true
 	}
 
-	return n, increment
+	if !read {
+		return 0, ErrNoInt
+	}
+
+	return n, nil
+}
+
+// 整数値の桁数を調べる.
+func calcNumOfIntDigit(n int) int {
+	return len(strconv.Itoa(n))
+}
+
+// 次のトークンが期待している記号のときには、トークンを1つ読み進めて
+// 真を返す。それ以外の場合には偽を返す.
+func consume(op rune) bool {
+	if token.Kind != TKReserved || token.Str[0] != op {
+		return false
+	}
+
+	token = token.Next
+
+	return true
+}
+
+// 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
+// それ以外の場合にはエラーを報告する.
+func expect(op rune) error {
+	if token.Kind != TKReserved || token.Str[0] != op {
+		return ErrUnexpectedChar{Want: op, Got: token.Str[0]}
+	}
+
+	token = token.Next
+
+	return nil
+}
+
+func expectNum() (int, error) {
+	if token.Kind != TKNum {
+		return 0, ErrNoInt
+	}
+
+	val := token.Val
+	token = token.Next
+
+	return val, nil
+}
+
+func atEOF() bool {
+	return token.Kind == TKEOF
 }
