@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -10,19 +11,15 @@ var (
 	ErrNoInt                   = errors.New("this is not integer")
 )
 
-type ErrUnexpectedChar struct {
-	Got  rune
-	Want rune
+type UserInput string
+
+func (ui UserInput) Err(loc int, message string) error {
+	body := fmt.Sprintf(`%s
+%s^ %s`, ui, strings.Repeat(" ", loc), message)
+
+	return InvalidInputError{s: body}
 }
 
-func (e ErrUnexpectedChar) Error() string {
-	if e.Got == '0' {
-		return fmt.Sprintf("unexpected char")
-	}
+type InvalidInputError struct{ s string }
 
-	if e.Want == '0' {
-		return fmt.Sprintf("unexpected char %s", e.Got)
-	}
-
-	return fmt.Sprintf("unexpected char %s, but want %c", e.Got, e.Want)
-}
+func (e InvalidInputError) Error() string { return e.s }

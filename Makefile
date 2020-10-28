@@ -1,4 +1,4 @@
-went: main.go
+went: *.go
 	rm -rf tmp*
 	go build .
 

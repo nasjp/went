@@ -24,12 +24,14 @@ type Token struct {
 	Next *Token
 	Val  int
 	Str  []rune
+	Loc  int
 }
 
-func NewToken(kind TokenKind, cur *Token, str []rune) *Token {
+func NewToken(kind TokenKind, cur *Token, str []rune, loc int) *Token {
 	tok := &Token{
 		Kind: kind,
 		Str:  str,
+		Loc:  loc,
 	}
 
 	cur.Next = tok
@@ -37,8 +39,50 @@ func NewToken(kind TokenKind, cur *Token, str []rune) *Token {
 	return tok
 }
 
-// 現在着目しているトークン
+// 次のトークンが期待している記号のときには真を返す
+// それ以外の場合には偽を返す.
+func (tk *Token) Consume(op rune) bool {
+	if tk.Kind != TKReserved || tk.Str[0] != op {
+		return false
+	}
+
+	return true
+}
+
+// 次のトークンが期待値以外の場合にはエラーを報告する.
+func (tk *Token) Expect(op rune) error {
+	if tk.Kind != TKReserved || tk.Str[0] != op {
+		return userInput.Err(tk.Loc, fmt.Sprintf("'%c'ではありません", op))
+	}
+
+	return nil
+}
+
+// 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す
+// それ以外の場合にはエラーを報告する.
+func (tk *Token) ExpectNum() (int, error) {
+	if tk.Kind != TKNum {
+		return 0, userInput.Err(tk.Loc, "数ではありません")
+	}
+
+	val := tk.Val
+
+	return val, nil
+}
+
+func (tk *Token) AtEOF() bool {
+	return tk.Kind == TKEOF
+}
+
+// 現在着目しているトークン.
 var token *Token
+
+func shift() {
+	token = token.Next
+}
+
+// ユーザーの入力文字列を保持する
+var userInput UserInput
 
 func main() {
 	if err := run(); err != nil {
@@ -56,6 +100,8 @@ func run() error {
 
 	p := os.Args[1]
 
+	userInput = UserInput(p)
+
 	var err error
 	if token, err = tokenize(p); err != nil {
 		return err
@@ -65,37 +111,47 @@ func run() error {
 	fmt.Println(".globl main")
 	fmt.Println("main:")
 
-	n, err := expectNum()
+	n, err := token.ExpectNum()
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("  mov rax, %d\n", n)
 
-	for !atEOF() {
-		if consume('+') {
-			operand, err := expectNum()
+	shift()
+
+	for !token.AtEOF() {
+		if token.Consume('+') {
+			shift()
+
+			operand, err := token.ExpectNum()
 			if err != nil {
 				return err
 			}
 
 			fmt.Printf("  add rax, %d\n", operand)
 
+			shift()
+
 			continue
 		}
 
-		if consume('-') {
-			operand, err := expectNum()
+		if token.Consume('-') {
+			shift()
+
+			operand, err := token.ExpectNum()
 			if err != nil {
 				return err
 			}
 
 			fmt.Printf("  sub rax, %d\n", operand)
 
+			shift()
+
 			continue
 		}
 
-		return ErrUnexpectedChar{}
+		return userInput.Err(token.Loc, "パースできません")
 	}
 
 	fmt.Println("  ret")
@@ -113,7 +169,7 @@ func tokenize(p string) (*Token, error) {
 		}
 
 		if p[i] == '+' || p[i] == '-' {
-			cur = NewToken(TKReserved, cur, []rune{rune(p[i])})
+			cur = NewToken(TKReserved, cur, []rune{rune(p[i])}, i)
 
 			continue
 		}
@@ -121,12 +177,12 @@ func tokenize(p string) (*Token, error) {
 		if unicode.IsDigit(rune(p[i])) {
 			n, err := strToInt(p[i:])
 			if err != nil {
-				return nil, err
+				return nil, userInput.Err(cur.Loc, "数ではありません")
 			}
 
 			d := calcNumOfIntDigit(n)
 
-			cur = NewToken(TKNum, cur, []rune(p[i:i+d-1]))
+			cur = NewToken(TKNum, cur, []rune(p[i:i+d-1]), i)
 			cur.Val = n
 
 			i += d - 1
@@ -134,10 +190,10 @@ func tokenize(p string) (*Token, error) {
 			continue
 		}
 
-		return nil, ErrUnexpectedChar{}
+		return nil, userInput.Err(cur.Loc, "トークナイズできません")
 	}
 
-	NewToken(TKEOF, cur, nil)
+	NewToken(TKEOF, cur, nil, len(p))
 
 	return head.Next, nil
 }
@@ -170,43 +226,4 @@ func strToInt(s string) (int, error) {
 // 整数値の桁数を調べる.
 func calcNumOfIntDigit(n int) int {
 	return len(strconv.Itoa(n))
-}
-
-// 次のトークンが期待している記号のときには、トークンを1つ読み進めて
-// 真を返す。それ以外の場合には偽を返す.
-func consume(op rune) bool {
-	if token.Kind != TKReserved || token.Str[0] != op {
-		return false
-	}
-
-	token = token.Next
-
-	return true
-}
-
-// 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
-// それ以外の場合にはエラーを報告する.
-func expect(op rune) error {
-	if token.Kind != TKReserved || token.Str[0] != op {
-		return ErrUnexpectedChar{Want: op, Got: token.Str[0]}
-	}
-
-	token = token.Next
-
-	return nil
-}
-
-func expectNum() (int, error) {
-	if token.Kind != TKNum {
-		return 0, ErrNoInt
-	}
-
-	val := token.Val
-	token = token.Next
-
-	return val, nil
-}
-
-func atEOF() bool {
-	return token.Kind == TKEOF
 }
