@@ -38,7 +38,7 @@ func run() error {
 	userInput = UserInput(p)
 
 	var err error
-	if token, err = tokenize(); err != nil {
+	if token, err = tokenize(p); err != nil {
 		return err
 	}
 

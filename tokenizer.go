@@ -69,9 +69,7 @@ func (tk *Token) AtEOF() bool {
 	return tk.Kind == TKEOF
 }
 
-func tokenize() (*Token, error) {
-	p := string(userInput)
-
+func tokenize(p string) (*Token, error) {
 	head := &Token{}
 	cur := head
 
