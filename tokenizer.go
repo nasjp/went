@@ -9,9 +9,11 @@ import (
 type TokenKind int
 
 const (
-	TKReserved TokenKind = iota
-	TKNum
-	TKEOF
+	TKReserved TokenKind = iota // 記号
+	TKReturn                    // return
+	TKIdent                     // 識別子
+	TKNum                       // 整数
+	TKEOF                       // 終点
 )
 
 type Token struct {
@@ -22,7 +24,7 @@ type Token struct {
 	Loc  int
 }
 
-func NewToken(kind TokenKind, cur *Token, str []rune, loc int) *Token {
+func NewToken(kind TokenKind, cur *Token, loc int, str ...rune) *Token {
 	tok := &Token{
 		Kind: kind,
 		Str:  str,
@@ -34,19 +36,30 @@ func NewToken(kind TokenKind, cur *Token, str []rune, loc int) *Token {
 	return tok
 }
 
-// 次のトークンが期待している記号のときには真を返す
+// 次のトークンが期待値の場合には真を返す
 // それ以外の場合には偽を返す.
-func (tk *Token) Consume(op rune) bool {
-	if tk.Kind != TKReserved || tk.Str[0] != op {
+func (tk *Token) Consume(op ...rune) bool {
+	if !(tk.Kind == TKReserved || tk.Kind == TKReturn) ||
+		len(op) != tk.Len() {
 		return false
+	}
+
+	for i := range op {
+		if op[i] != tk.Str[i] {
+			return false
+		}
 	}
 
 	return true
 }
 
+func (tk *Token) ConsumeIdent() bool {
+	return tk.Kind == TKIdent
+}
+
 // 次のトークンが期待値以外の場合にはエラーを報告する.
-func (tk *Token) Expect(op rune) error {
-	if tk.Kind != TKReserved || tk.Str[0] != op {
+func (tk *Token) Expect(op ...rune) error {
+	if !tk.Consume(op...) {
 		return userInput.Err(tk.Loc, fmt.Sprintf("'%c'ではありません", op))
 	}
 
@@ -65,6 +78,10 @@ func (tk *Token) ExpectNum() (int, error) {
 	return val, nil
 }
 
+func (tk *Token) Len() int {
+	return len(tk.Str)
+}
+
 func (tk *Token) AtEOF() bool {
 	return tk.Kind == TKEOF
 }
@@ -78,6 +95,22 @@ func tokenize(p string) (*Token, error) {
 			continue
 		}
 
+		if tar := p[i:]; startsWith(tar, "==") || startsWith(tar, "!=") || startsWith(tar, "<=") || startsWith(tar, ">=") {
+			cur = NewToken(TKReserved, cur, i, []rune(tar[:2])...)
+
+			i++
+
+			continue
+		}
+
+		if tar := p[i:]; startsWith(tar, "return") && !isAlphaOrInt(rune(p[i+6])) {
+			cur = NewToken(TKReturn, cur, i, []rune(tar[:6])...)
+
+			i += 5
+
+			continue
+		}
+
 		switch p[i] {
 		case
 			'+',
@@ -85,8 +118,21 @@ func tokenize(p string) (*Token, error) {
 			'*',
 			'/',
 			')',
-			'(':
-			cur = NewToken(TKReserved, cur, []rune{rune(p[i])}, i)
+			'(',
+			'>',
+			'<',
+			'=',
+			';':
+			cur = NewToken(TKReserved, cur, i, []rune{rune(p[i])}...)
+
+			continue
+		}
+
+		if isAlpha(rune(p[i])) {
+			str := strToAlpha(p[i:])
+			cur = NewToken(TKIdent, cur, i, []rune(str)...)
+
+			i += len(str) - 1
 
 			continue
 		}
@@ -94,12 +140,12 @@ func tokenize(p string) (*Token, error) {
 		if unicode.IsDigit(rune(p[i])) {
 			n, err := strToInt(p[i:])
 			if err != nil {
-				return nil, userInput.Err(cur.Loc, "数ではありません")
+				return nil, userInput.Err(i, "数ではありません")
 			}
 
 			d := calcNumOfIntDigit(n)
 
-			cur = NewToken(TKNum, cur, []rune(p[i:i+d-1]), i)
+			cur = NewToken(TKNum, cur, i, []rune(p[i:i+d-1])...)
 			cur.Val = n
 
 			i += d - 1
@@ -107,10 +153,10 @@ func tokenize(p string) (*Token, error) {
 			continue
 		}
 
-		return nil, userInput.Err(cur.Loc, "トークナイズできません")
+		return nil, userInput.Err(i, "トークナイズできません")
 	}
 
-	NewToken(TKEOF, cur, nil, len(p))
+	NewToken(TKEOF, cur, len(p))
 
 	return head.Next, nil
 }
@@ -124,7 +170,7 @@ func strToInt(s string) (int, error) {
 	)
 
 	for _, c := range s {
-		if c < '0' || '9' < c {
+		if !isInt(c) {
 			break
 		}
 
@@ -143,4 +189,47 @@ func strToInt(s string) (int, error) {
 // 整数値の桁数を調べる.
 func calcNumOfIntDigit(n int) int {
 	return len(strconv.Itoa(n))
+}
+
+// 文字列が対象で始まるか調べる.
+func startsWith(s string, tar string) bool {
+	if len(tar) > len(s) {
+		return false
+	}
+
+	for i := range tar {
+		if s[i] != tar[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// アルファベットか調べる.
+func isAlpha(s rune) bool {
+	return ('a' <= s && s <= 'z') || ('A' <= s && s <= 'Z')
+}
+
+func isInt(s rune) bool {
+	return ('0' <= s && s <= '9')
+}
+
+func isAlphaOrInt(s rune) bool {
+	return isAlpha(s) || isInt(s) || (s == '_')
+}
+
+// 文字列をアルファベットまで読み進めるだけ読み進める.
+func strToAlpha(s string) string {
+	alpha := make([]rune, 0)
+
+	for _, c := range s {
+		if c < 'a' || 'z' < c {
+			break
+		}
+
+		alpha = append(alpha, c)
+	}
+
+	return string(alpha)
 }

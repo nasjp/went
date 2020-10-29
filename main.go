@@ -19,6 +19,9 @@ func proceedToken() {
 // ユーザーの入力文字列を保持する.
 var userInput UserInput
 
+// ローカル変数を保持する
+var localValue *LocalValue
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -42,14 +45,20 @@ func run() error {
 		return err
 	}
 
-	node, err := expr()
+	code, err := program()
 	if err != nil {
 		return err
 	}
 
 	prequel()
 
-	generate(node)
+	for _, node := range code {
+		if err := generate(node); err != nil {
+			return err
+		}
+
+		fmt.Println("  pop rax")
+	}
 
 	sequel()
 

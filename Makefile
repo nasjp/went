@@ -1,6 +1,10 @@
-went: *.go
+CC = go
+
+SRCS=$(wildcard *.go)
+
+went: $(SRCS)
 	rm -rf tmp*
-	go build .
+	$(CC) build .
 
 test: went
 	./test.sh
