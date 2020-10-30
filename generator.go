@@ -44,7 +44,6 @@ func generate(node *Node) error {
 		fmt.Println("  push rdi")
 
 		return nil
-
 	case NDReturn:
 		if err := generate(node.Left); err != nil {
 			return err
@@ -54,6 +53,43 @@ func generate(node *Node) error {
 		fmt.Println("  mov rsp, rbp")
 		fmt.Println("  pop rbp")
 		fmt.Println("  ret")
+
+		return nil
+	case NDIf:
+		if err := generate(node.Cond); err != nil {
+			return err
+		}
+
+		label := uniqueLabel()
+
+		fmt.Println("  pop rax")
+		fmt.Println("  cmp rax, 0")
+
+		if node.Else != nil {
+			fmt.Printf("  je  .L.else.%s\n", label)
+
+			if err := generate(node.Then); err != nil {
+				return err
+			}
+
+			fmt.Printf("  jmp .L.end.%s\n", label)
+			fmt.Printf(".L.else.%s:\n", label)
+
+			if err := generate(node.Else); err != nil {
+				return err
+			}
+
+			fmt.Printf(".L.end.%s:\n", label)
+		} else {
+			fmt.Printf("  je  .L.end.%s\n", label)
+
+			if err := generate(node.Then); err != nil {
+				return err
+			}
+
+			fmt.Printf(".L.end.%s:\n", label)
+		}
+
 		return nil
 	}
 
@@ -117,4 +153,14 @@ func sequel() {
 	fmt.Println("  mov rsp, rbp")
 	fmt.Println("  pop rbp")
 	fmt.Println("  ret")
+}
+
+func uniqueLabel() string {
+	one := label % 26
+	two := label / 26 % 26
+	three := label / (26 * 26) % (26 * 26)
+
+	label++
+
+	return fmt.Sprintf("%c%c%c", 'A'+three, 'A'+two, 'A'+one)
 }

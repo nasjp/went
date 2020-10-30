@@ -14,13 +14,21 @@ const (
 	NDNum                    // 123
 	NDAssign                 // =
 	NDLocalV                 // ローカル変数
-	NDReturn
+	NDReturn                 // return
+	NDIf                     // if
+	NDFor                    // if
 )
 
 type Node struct {
 	Kind   NodeKind
 	Left   *Node
 	Right  *Node
+	Cond   *Node
+	Then   *Node
+	Else   *Node
+	Init   *Node
+	Inc    *Node
+	Body   *Node
 	Val    int
 	Offset int
 }
@@ -47,6 +55,15 @@ func NewNodeIdent(offset int) *Node {
 	return node
 }
 
+func NewNodeIf(cond *Node, then *Node, els *Node) *Node {
+	node := NewNode(NDIf, nil, nil)
+	node.Cond = cond
+	node.Then = then
+	node.Else = els
+
+	return node
+}
+
 func program() ([]*Node, error) {
 	code := make([]*Node, 0, 100)
 
@@ -63,12 +80,10 @@ func program() ([]*Node, error) {
 }
 
 func stmt() (*Node, error) {
-	var (
-		node *Node
-		err  error
-	)
+	var node *Node
 
-	if token.Consume([]rune("return")...) {
+	switch {
+	case token.Consume(TKReturn):
 		proceedToken()
 
 		left, err := expr()
@@ -77,18 +92,61 @@ func stmt() (*Node, error) {
 		}
 
 		node = NewNode(NDReturn, left, nil)
-	} else {
-		node, err = expr()
+
+		if err := token.Expect(TKReserved, ';'); err != nil {
+			return nil, err
+		}
+
+		proceedToken()
+	case token.Consume(TKIf):
+		proceedToken()
+
+		if err := token.Expect(TKReserved, '('); err != nil {
+			return nil, err
+		}
+
+		proceedToken()
+
+		cond, err := expr()
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	if err := token.Expect(';'); err != nil {
-		return nil, err
-	}
+		if err := token.Expect(TKReserved, ')'); err != nil {
+			return nil, err
+		}
 
-	proceedToken()
+		proceedToken()
+
+		stm, err := stmt()
+		if err != nil {
+			return nil, err
+		}
+
+		var els *Node
+
+		if token.Consume(TKElse) {
+			proceedToken()
+
+			var err error
+			if els, err = stmt(); err != nil {
+				return nil, err
+			}
+		}
+
+		node = NewNodeIf(cond, stm, els)
+	default:
+		var err error
+		if node, err = expr(); err != nil {
+			return nil, err
+		}
+
+		if err := token.Expect(TKReserved, ';'); err != nil {
+			return nil, err
+		}
+
+		proceedToken()
+	}
 
 	return node, nil
 }
@@ -103,7 +161,7 @@ func assign() (*Node, error) {
 		return nil, err
 	}
 
-	if token.Consume('=') {
+	if token.Consume(TKReserved, '=') {
 		proceedToken()
 
 		right, err := equality()
@@ -124,7 +182,7 @@ func equality() (*Node, error) {
 	}
 
 	for {
-		if token.Consume([]rune("==")...) {
+		if token.Consume(TKReserved, []rune("==")...) {
 			proceedToken()
 
 			right, err := relational()
@@ -137,7 +195,7 @@ func equality() (*Node, error) {
 			continue
 		}
 
-		if token.Consume([]rune("!=")...) {
+		if token.Consume(TKReserved, []rune("!=")...) {
 			proceedToken()
 
 			right, err := relational()
@@ -161,7 +219,7 @@ func relational() (*Node, error) {
 	}
 
 	for {
-		if token.Consume([]rune("<")...) {
+		if token.Consume(TKReserved, []rune("<")...) {
 			proceedToken()
 
 			right, err := add()
@@ -174,7 +232,7 @@ func relational() (*Node, error) {
 			continue
 		}
 
-		if token.Consume([]rune("<=")...) {
+		if token.Consume(TKReserved, []rune("<=")...) {
 			proceedToken()
 
 			right, err := add()
@@ -187,7 +245,7 @@ func relational() (*Node, error) {
 			continue
 		}
 
-		if token.Consume([]rune(">")...) {
+		if token.Consume(TKReserved, []rune(">")...) {
 			proceedToken()
 
 			left, err := add()
@@ -200,7 +258,7 @@ func relational() (*Node, error) {
 			continue
 		}
 
-		if token.Consume([]rune(">=")...) {
+		if token.Consume(TKReserved, []rune(">=")...) {
 			proceedToken()
 
 			left, err := add()
@@ -224,7 +282,7 @@ func add() (*Node, error) {
 	}
 
 	for {
-		if token.Consume('+') {
+		if token.Consume(TKReserved, '+') {
 			proceedToken()
 
 			right, err := mul()
@@ -237,7 +295,7 @@ func add() (*Node, error) {
 			continue
 		}
 
-		if token.Consume('-') {
+		if token.Consume(TKReserved, '-') {
 			proceedToken()
 
 			right, err := mul()
@@ -261,7 +319,7 @@ func mul() (*Node, error) {
 	}
 
 	for {
-		if token.Consume('*') {
+		if token.Consume(TKReserved, '*') {
 			proceedToken()
 
 			right, err := unary()
@@ -274,7 +332,7 @@ func mul() (*Node, error) {
 			continue
 		}
 
-		if token.Consume('/') {
+		if token.Consume(TKReserved, '/') {
 			proceedToken()
 
 			right, err := unary()
@@ -292,13 +350,13 @@ func mul() (*Node, error) {
 }
 
 func unary() (*Node, error) {
-	if token.Consume('+') {
+	if token.Consume(TKReserved, '+') {
 		proceedToken()
 
 		return unary()
 	}
 
-	if token.Consume('-') {
+	if token.Consume(TKReserved, '-') {
 		proceedToken()
 
 		node, err := unary()
@@ -313,7 +371,7 @@ func unary() (*Node, error) {
 }
 
 func primary() (*Node, error) {
-	if token.Consume('(') {
+	if token.Consume(TKReserved, '(') {
 		proceedToken()
 
 		node, err := expr()
@@ -321,7 +379,7 @@ func primary() (*Node, error) {
 			return nil, err
 		}
 
-		if err := token.Expect(')'); err != nil {
+		if err := token.Expect(TKReserved, ')'); err != nil {
 			return nil, err
 		}
 

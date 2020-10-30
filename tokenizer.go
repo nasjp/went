@@ -11,6 +11,9 @@ type TokenKind int
 const (
 	TKReserved TokenKind = iota // 記号
 	TKReturn                    // return
+	TKIf                        // if
+	TKElse                      // if
+	TKFor                       // for
 	TKIdent                     // 識別子
 	TKNum                       // 整数
 	TKEOF                       // 終点
@@ -37,10 +40,18 @@ func NewToken(kind TokenKind, cur *Token, loc int, str ...rune) *Token {
 }
 
 // 次のトークンが期待値の場合には真を返す
-// それ以外の場合には偽を返す.
-func (tk *Token) Consume(op ...rune) bool {
-	if !(tk.Kind == TKReserved || tk.Kind == TKReturn) ||
-		len(op) != tk.Len() {
+// それ以外の場合には偽を返す
+// opは省略可能.
+func (tk *Token) Consume(kind TokenKind, op ...rune) bool {
+	if tk.Kind != kind {
+		return false
+	}
+
+	if len(op) == 0 {
+		return true
+	}
+
+	if len(op) != tk.Len() {
 		return false
 	}
 
@@ -58,9 +69,9 @@ func (tk *Token) ConsumeIdent() bool {
 }
 
 // 次のトークンが期待値以外の場合にはエラーを報告する.
-func (tk *Token) Expect(op ...rune) error {
-	if !tk.Consume(op...) {
-		return userInput.Err(tk.Loc, fmt.Sprintf("'%c'ではありません", op))
+func (tk *Token) Expect(kind TokenKind, op ...rune) error {
+	if !tk.Consume(kind, op...) {
+		return userInput.Err(tk.Loc, fmt.Sprintf("'%s'ではありません", string(op)))
 	}
 
 	return nil
@@ -99,6 +110,30 @@ func tokenize(p string) (*Token, error) {
 			cur = NewToken(TKReserved, cur, i, []rune(tar[:2])...)
 
 			i++
+
+			continue
+		}
+
+		if tar := p[i:]; startsWith(tar, "if") {
+			cur = NewToken(TKIf, cur, i, []rune(tar[:2])...)
+
+			i++
+
+			continue
+		}
+
+		if tar := p[i:]; startsWith(tar, "else") {
+			cur = NewToken(TKElse, cur, i, []rune(tar[:4])...)
+
+			i += 3
+
+			continue
+		}
+
+		if tar := p[i:]; startsWith(tar, "for") {
+			cur = NewToken(TKIf, cur, i, []rune(tar[:3])...)
+
+			i += 2
 
 			continue
 		}

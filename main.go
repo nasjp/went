@@ -22,6 +22,9 @@ var userInput UserInput
 // ローカル変数を保持する
 var localValue *LocalValue
 
+// ニーモニックのラベル名を管理する
+var label int
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
