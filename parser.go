@@ -80,8 +80,6 @@ func program() ([]*Node, error) {
 }
 
 func stmt() (*Node, error) {
-	var node *Node
-
 	switch {
 	case token.Consume(TKReturn):
 		proceedToken()
@@ -91,13 +89,15 @@ func stmt() (*Node, error) {
 			return nil, err
 		}
 
-		node = NewNode(NDReturn, left, nil)
+		node := NewNode(NDReturn, left, nil)
 
 		if err := token.Expect(TKReserved, ';'); err != nil {
 			return nil, err
 		}
 
 		proceedToken()
+
+		return node, nil
 	case token.Consume(TKIf):
 		proceedToken()
 
@@ -134,10 +134,12 @@ func stmt() (*Node, error) {
 			}
 		}
 
-		node = NewNodeIf(cond, stm, els)
+		node := NewNodeIf(cond, stm, els)
+
+		return node, nil
 	default:
-		var err error
-		if node, err = expr(); err != nil {
+		node, err := expr()
+		if err != nil {
 			return nil, err
 		}
 
@@ -146,9 +148,9 @@ func stmt() (*Node, error) {
 		}
 
 		proceedToken()
-	}
 
-	return node, nil
+		return node, nil
+	}
 }
 
 func expr() (*Node, error) {
