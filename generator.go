@@ -126,6 +126,15 @@ func generate(node *Node) error {
 		fmt.Printf(".L.end.%s:\n", label)
 
 		return nil
+
+	case NDBlock:
+		for now := node.Body; now != nil; now = now.Next {
+			if err := generate(now); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 
 	if err := generate(node.Left); err != nil {

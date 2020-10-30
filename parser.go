@@ -17,6 +17,7 @@ const (
 	NDReturn                 // return
 	NDIf                     // if
 	NDFor                    // if
+	NDBlock                  // {}
 )
 
 type Node struct {
@@ -29,6 +30,7 @@ type Node struct {
 	Init   *Node
 	Inc    *Node
 	Body   *Node
+	Next   *Node
 	Val    int
 	Offset int
 }
@@ -103,6 +105,35 @@ func stmt() (*Node, error) {
 		proceedToken()
 
 		return stmtFor()
+	case token.Consume(TKReserved, '{'):
+		proceedToken()
+
+		node := NewNode(NDBlock, nil, nil)
+
+		var stm *Node
+
+		for {
+			now, err := stmt()
+			if err != nil {
+				return nil, err
+			}
+
+			if stm == nil {
+				stm = now
+				node.Body = now
+			} else {
+				stm.Next = now
+				stm = now
+			}
+
+			if token.Consume(TKReserved, '}') {
+				proceedToken()
+
+				break
+			}
+		}
+
+		return node, nil
 	default:
 		node, err := expr()
 		if err != nil {
