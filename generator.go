@@ -13,6 +13,8 @@ func prequel() {
 	fmt.Printf("  sub rsp, %d\n", offsetSize*26)
 }
 
+var argreg = []string{"rdi", "rsi", "rdx", "rcx", "r8", "r9"}
+
 func generate(node *Node) error {
 	switch node.Kind {
 	case NDNum:
@@ -128,11 +130,42 @@ func generate(node *Node) error {
 		return nil
 
 	case NDBlock:
-		for now := node.Body; now != nil; now = now.Next {
-			if err := generate(now); err != nil {
+		for cur := node.Body; cur != nil; cur = cur.Next {
+			if err := generate(cur); err != nil {
 				return err
 			}
 		}
+
+		return nil
+	case NDFunc:
+		var nargs int
+
+		for arg := node.Args; arg != nil; arg = arg.Next {
+			if err := generate(arg); err != nil {
+				return err
+			}
+			nargs++
+		}
+
+		for i := nargs - 1; i >= 0; i-- {
+			fmt.Printf("  pop %s\n", argreg[i])
+		}
+
+		label := uniqueLabel()
+
+		fmt.Printf("  mov rax, rsp\n")
+		fmt.Printf("  and rax, 15\n")
+		fmt.Printf("  jnz .L.call.%s\n", label)
+		fmt.Printf("  mov rax, 0\n")
+		fmt.Printf("  call %s\n", string(node.FuncName))
+		fmt.Printf("  jmp .L.end.%s\n", label)
+		fmt.Printf(".L.call.%s:\n", label)
+		fmt.Printf("  sub rsp, 8\n")
+		fmt.Printf("  mov rax, 0\n")
+		fmt.Printf("  call %s\n", string(node.FuncName))
+		fmt.Printf("  add rsp, 8\n")
+		fmt.Printf(".L.end.%s:\n", label)
+		fmt.Printf("  push rax\n")
 
 		return nil
 	}

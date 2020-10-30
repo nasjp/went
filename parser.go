@@ -18,21 +18,24 @@ const (
 	NDIf                     // if
 	NDFor                    // if
 	NDBlock                  // {}
+	NDFunc                   // if
 )
 
 type Node struct {
-	Kind   NodeKind
-	Left   *Node
-	Right  *Node
-	Cond   *Node
-	Then   *Node
-	Else   *Node
-	Init   *Node
-	Inc    *Node
-	Body   *Node
-	Next   *Node
-	Val    int
-	Offset int
+	Kind     NodeKind
+	Left     *Node
+	Right    *Node
+	Cond     *Node
+	Then     *Node
+	Else     *Node
+	Init     *Node
+	Inc      *Node
+	Body     *Node
+	Next     *Node
+	Args     *Node
+	Val      int
+	Offset   int
+	FuncName []rune
 }
 
 func NewNode(kind NodeKind, left *Node, right *Node) *Node {
@@ -72,6 +75,14 @@ func NewNodeFor(ini *Node, cond *Node, inc *Node, then *Node) *Node {
 	node.Cond = cond
 	node.Inc = inc
 	node.Then = then
+
+	return node
+}
+
+func NewNodeFunc(name []rune, args *Node) *Node {
+	node := NewNode(NDFunc, nil, nil)
+	node.FuncName = name
+	node.Args = args
 
 	return node
 }
@@ -515,23 +526,7 @@ func primary() (*Node, error) {
 	}
 
 	if token.ConsumeIdent() {
-		var offset int
-
-		if lval := findLocalValue(token); lval != nil {
-			offset = lval.Offset
-		} else {
-			var localValueOffset int
-			if localValue != nil {
-				localValueOffset = localValue.Offset
-			}
-
-			localValue = NewLocalValue(token, localValueOffset)
-			offset = localValue.Offset
-		}
-
-		proceedToken()
-
-		return NewNodeIdent(offset), nil
+		return ident()
 	}
 
 	n, err := token.ExpectNum()
@@ -542,4 +537,89 @@ func primary() (*Node, error) {
 	proceedToken()
 
 	return NewNodeNum(n), nil
+}
+
+func ident() (*Node, error) {
+	if token.Skip().Consume(TKReserved, '(') {
+		return identFunc()
+	}
+
+	node, err := identVal()
+
+	proceedToken()
+
+	return node, err
+}
+
+func identVal() (*Node, error) {
+	var offset int
+
+	if lval := findLocalValue(token); lval != nil {
+		offset = lval.Offset
+	} else {
+		var localValueOffset int
+		if localValue != nil {
+			localValueOffset = localValue.Offset
+		}
+
+		localValue = NewLocalValue(token, localValueOffset)
+		offset = localValue.Offset
+	}
+
+	return NewNodeIdent(offset), nil
+}
+
+func identFunc() (*Node, error) {
+	funcName := token.Str
+
+	proceedToken()
+
+	if err := token.Expect(TKReserved, '('); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	args, err := funcArgs()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNodeFunc(funcName, args), nil
+}
+
+func funcArgs() (*Node, error) {
+	if token.Consume(TKReserved, ')') {
+		proceedToken()
+
+		return nil, nil
+	}
+
+	head, err := assign()
+	if err != nil {
+		return nil, err
+	}
+
+	cur := head
+
+	for token.Consume(TKReserved, ',') {
+		proceedToken()
+
+		node, err := assign()
+		if err != nil {
+			return nil, err
+		}
+
+		cur.Next = node
+
+		cur = cur.Next
+	}
+
+	if err := token.Expect(TKReserved, ')'); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	return head, nil
 }
