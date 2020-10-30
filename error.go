@@ -9,7 +9,6 @@ import (
 var (
 	ErrIncorrectNumberArgument = errors.New("the number of arguments is not correct")
 	ErrNoInt                   = errors.New("this is not integer")
-	ErrNoAlpha                 = errors.New("this is not alphabet")
 )
 
 type UserInput string
