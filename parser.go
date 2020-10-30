@@ -64,6 +64,16 @@ func NewNodeIf(cond *Node, then *Node, els *Node) *Node {
 	return node
 }
 
+func NewNodeFor(ini *Node, cond *Node, inc *Node, then *Node) *Node {
+	node := NewNode(NDFor, nil, nil)
+	node.Init = ini
+	node.Cond = cond
+	node.Inc = inc
+	node.Then = then
+
+	return node
+}
+
 func program() ([]*Node, error) {
 	code := make([]*Node, 0, 100)
 
@@ -101,6 +111,7 @@ func stmt() (*Node, error) {
 	case token.Consume(TKIf):
 		proceedToken()
 
+		// ブロックスコープができたら削る
 		if err := token.Expect(TKReserved, '('); err != nil {
 			return nil, err
 		}
@@ -112,6 +123,7 @@ func stmt() (*Node, error) {
 			return nil, err
 		}
 
+		// ブロックスコープができたら削る
 		if err := token.Expect(TKReserved, ')'); err != nil {
 			return nil, err
 		}
@@ -137,6 +149,10 @@ func stmt() (*Node, error) {
 		node := NewNodeIf(cond, stm, els)
 
 		return node, nil
+	case token.Consume(TKFor):
+		proceedToken()
+
+		return stmtFor()
 	default:
 		node, err := expr()
 		if err != nil {
@@ -151,6 +167,75 @@ func stmt() (*Node, error) {
 
 		return node, nil
 	}
+}
+
+func stmtFor() (*Node, error) {
+	// ブロックスコープができたら削る
+	if err := token.Expect(TKReserved, '('); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	var (
+		ini  *Node
+		cond *Node
+		inc  *Node
+	)
+
+	// firstNext := token.Skip()
+
+	if token.Consume(TKReserved, ';') {
+		proceedToken()
+	} else {
+		var err error
+		if ini, err = expr(); err != nil {
+			return nil, err
+		}
+
+		if err := token.Expect(TKReserved, ';'); err != nil {
+			return nil, err
+		}
+
+		proceedToken()
+	}
+
+	if token.Consume(TKReserved, ';') {
+		proceedToken()
+	} else {
+		var err error
+		if cond, err = expr(); err != nil {
+			return nil, err
+		}
+
+		if err := token.Expect(TKReserved, ';'); err != nil {
+			return nil, err
+		}
+
+		proceedToken()
+	}
+
+	if token.Consume(TKReserved, ')') {
+		proceedToken()
+	} else {
+		var err error
+		if inc, err = expr(); err != nil {
+			return nil, err
+		}
+
+		if err := token.Expect(TKReserved, ')'); err != nil {
+			return nil, err
+		}
+
+		proceedToken()
+	}
+
+	then, err := stmt()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNodeFor(ini, cond, inc, then), nil
 }
 
 func expr() (*Node, error) {

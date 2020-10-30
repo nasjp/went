@@ -97,6 +97,11 @@ func (tk *Token) AtEOF() bool {
 	return tk.Kind == TKEOF
 }
 
+// 次のトークンを取得する.
+func (tk *Token) Skip() *Token {
+	return tk.Next
+}
+
 func tokenize(p string) (*Token, error) {
 	head := &Token{}
 	cur := head
@@ -131,7 +136,7 @@ func tokenize(p string) (*Token, error) {
 		}
 
 		if tar := p[i:]; startsWith(tar, "for") {
-			cur = NewToken(TKIf, cur, i, []rune(tar[:3])...)
+			cur = NewToken(TKFor, cur, i, []rune(tar[:3])...)
 
 			i += 2
 

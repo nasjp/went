@@ -5,6 +5,10 @@ services:
     volumes:
       - .:/went
     working_dir: /went
+    cap_add:
+      - ALL
+    security_opt:
+      - seccomp:unconfined
   test:
     <<: *went
     command: >

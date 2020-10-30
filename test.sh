@@ -59,4 +59,8 @@ assert 3 'if (0) return 2; return 3;'
 assert 3 'if (3 < 2) return 2; else return 3;'
 assert 4 'if (3 < 2) return 2; else if (2 < 1) return 3; else return 4;'
 
+assert 55 'j = 0; for (i = 0; i <= 10; i = i + 1) j = i + j; return j;'
+assert 3 'for (;;) return 3; return 5;'
+assert 0 'for (i = 0;;)  if(i <= 10) return i;'
+
 echo OK

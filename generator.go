@@ -91,6 +91,41 @@ func generate(node *Node) error {
 		}
 
 		return nil
+	case NDFor:
+		label := uniqueLabel()
+
+		if node.Init != nil {
+			if err := generate(node.Init); err != nil {
+				return err
+			}
+		}
+
+		fmt.Printf(".L.begin.%s:\n", label)
+
+		if node.Cond != nil {
+			if err := generate(node.Cond); err != nil {
+				return err
+			}
+
+			fmt.Println("pop rax")
+			fmt.Println("cmp rax, 0")
+			fmt.Printf("je .L.end.%s\n", label)
+		}
+
+		if err := generate(node.Then); err != nil {
+			return err
+		}
+
+		if node.Inc != nil {
+			if err := generate(node.Inc); err != nil {
+				return err
+			}
+		}
+
+		fmt.Printf("jmp .L.begin.%s\n", label)
+		fmt.Printf(".L.end.%s:\n", label)
+
+		return nil
 	}
 
 	if err := generate(node.Left); err != nil {
