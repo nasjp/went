@@ -2,23 +2,56 @@ package main
 
 import "fmt"
 
-func prequel() {
-	fmt.Println(".intel_syntax noprefix")
-	fmt.Println(".globl main")
-	fmt.Println("main:")
+var argReg = []string{"rdi", "rsi", "rdx", "rcx", "r8", "r9"}
 
-	// 変数領域を確保
-	fmt.Println("  push rbp")
-	fmt.Println("  mov rbp, rsp")
-	fmt.Printf("  sub rsp, %d\n", offsetSize*26)
+func generate(nodes *Node) error {
+	output.L(".intel_syntax noprefix")
+
+	for node := nodes; node != nil; node = node.Next {
+		if node.Kind == NDFuncDef {
+			if err := genFunction(node); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
-var argreg = []string{"rdi", "rsi", "rdx", "rcx", "r8", "r9"}
+func genFunction(node *Node) error {
+	funcName := string(node.Name)
+	output.F(".global %s\n", funcName)
+	output.F("%s:\n", funcName)
 
-func generate(node *Node) error {
+	output.L("  push rbp")
+	output.L("  mov rbp, rsp")
+	output.F("  sub rsp, %d\n", node.Size)
+
+	var i int
+
+	for p := node.Params; p != nil; p = p.Next {
+		output.F("  mov [rbp-%d], %s\n", p.Offset, argReg[i])
+		i++
+	}
+
+	for body := node.Body; body != nil; body = body.Next {
+		if err := genStmt(body); err != nil {
+			return err
+		}
+	}
+
+	output.F(".L.return.%s:\n", funcName)
+	output.L("  mov rsp, rbp")
+	output.L("  pop rbp")
+	output.L("  ret")
+
+	return nil
+}
+
+func genStmt(node *Node) error {
 	switch node.Kind {
 	case NDNum:
-		fmt.Printf("  push %d\n", node.Val)
+		output.F("  push %d\n", node.Val)
 
 		return nil
 	case NDLocalV:
@@ -26,9 +59,9 @@ func generate(node *Node) error {
 			return err
 		}
 
-		fmt.Println("  pop rax")
-		fmt.Println("  mov rax, [rax]")
-		fmt.Println("  push rax")
+		output.L("  pop rax")
+		output.L("  mov rax, [rax]")
+		output.L("  push rax")
 
 		return nil
 	case NDAssign:
@@ -36,60 +69,60 @@ func generate(node *Node) error {
 			return err
 		}
 
-		if err := generate(node.Right); err != nil {
+		if err := genStmt(node.Right); err != nil {
 			return err
 		}
 
-		fmt.Println("  pop rdi")
-		fmt.Println("  pop rax")
-		fmt.Println("  mov [rax], rdi")
-		fmt.Println("  push rdi")
+		output.L("  pop rdi")
+		output.L("  pop rax")
+		output.L("  mov [rax], rdi")
+		output.L("  push rdi")
 
 		return nil
 	case NDReturn:
-		if err := generate(node.Left); err != nil {
+		if err := genStmt(node.Left); err != nil {
 			return err
 		}
 
-		fmt.Println("  pop rax")
-		fmt.Println("  mov rsp, rbp")
-		fmt.Println("  pop rbp")
-		fmt.Println("  ret")
+		output.L("  pop rax")
+		output.L("  mov rsp, rbp")
+		output.L("  pop rbp")
+		output.L("  ret")
 
 		return nil
 	case NDIf:
-		if err := generate(node.Cond); err != nil {
+		if err := genStmt(node.Cond); err != nil {
 			return err
 		}
 
 		label := uniqueLabel()
 
-		fmt.Println("  pop rax")
-		fmt.Println("  cmp rax, 0")
+		output.L("  pop rax")
+		output.L("  cmp rax, 0")
 
 		if node.Else != nil {
-			fmt.Printf("  je  .L.else.%s\n", label)
+			output.F("  je  .L.else.%s\n", label)
 
-			if err := generate(node.Then); err != nil {
+			if err := genStmt(node.Then); err != nil {
 				return err
 			}
 
-			fmt.Printf("  jmp .L.end.%s\n", label)
-			fmt.Printf(".L.else.%s:\n", label)
+			output.F("  jmp .L.end.%s\n", label)
+			output.F(".L.else.%s:\n", label)
 
-			if err := generate(node.Else); err != nil {
+			if err := genStmt(node.Else); err != nil {
 				return err
 			}
 
-			fmt.Printf(".L.end.%s:\n", label)
+			output.F(".L.end.%s:\n", label)
 		} else {
-			fmt.Printf("  je  .L.end.%s\n", label)
+			output.F("  je  .L.end.%s\n", label)
 
-			if err := generate(node.Then); err != nil {
+			if err := genStmt(node.Then); err != nil {
 				return err
 			}
 
-			fmt.Printf(".L.end.%s:\n", label)
+			output.F(".L.end.%s:\n", label)
 		}
 
 		return nil
@@ -97,139 +130,132 @@ func generate(node *Node) error {
 		label := uniqueLabel()
 
 		if node.Init != nil {
-			if err := generate(node.Init); err != nil {
+			if err := genStmt(node.Init); err != nil {
 				return err
 			}
 		}
 
-		fmt.Printf(".L.begin.%s:\n", label)
+		output.F(".L.begin.%s:\n", label)
 
 		if node.Cond != nil {
-			if err := generate(node.Cond); err != nil {
+			if err := genStmt(node.Cond); err != nil {
 				return err
 			}
 
-			fmt.Println("pop rax")
-			fmt.Println("cmp rax, 0")
-			fmt.Printf("je .L.end.%s\n", label)
+			output.L("pop rax")
+			output.L("cmp rax, 0")
+			output.F("je .L.end.%s\n", label)
 		}
 
-		if err := generate(node.Then); err != nil {
+		if err := genStmt(node.Then); err != nil {
 			return err
 		}
 
 		if node.Inc != nil {
-			if err := generate(node.Inc); err != nil {
+			if err := genStmt(node.Inc); err != nil {
 				return err
 			}
 		}
 
-		fmt.Printf("jmp .L.begin.%s\n", label)
-		fmt.Printf(".L.end.%s:\n", label)
+		output.F("jmp .L.begin.%s\n", label)
+		output.F(".L.end.%s:\n", label)
 
 		return nil
-
 	case NDBlock:
 		for cur := node.Body; cur != nil; cur = cur.Next {
-			if err := generate(cur); err != nil {
+			if err := genStmt(cur); err != nil {
 				return err
 			}
 		}
 
 		return nil
-	case NDFunc:
+	case NDFuncCall:
 		var nargs int
 
 		for arg := node.Args; arg != nil; arg = arg.Next {
-			if err := generate(arg); err != nil {
+			if err := genStmt(arg); err != nil {
 				return err
 			}
 			nargs++
 		}
 
 		for i := nargs - 1; i >= 0; i-- {
-			fmt.Printf("  pop %s\n", argreg[i])
+			output.F("  pop %s\n", argReg[i])
 		}
 
 		label := uniqueLabel()
 
-		fmt.Printf("  mov rax, rsp\n")
-		fmt.Printf("  and rax, 15\n")
-		fmt.Printf("  jnz .L.call.%s\n", label)
-		fmt.Printf("  mov rax, 0\n")
-		fmt.Printf("  call %s\n", string(node.FuncName))
-		fmt.Printf("  jmp .L.end.%s\n", label)
-		fmt.Printf(".L.call.%s:\n", label)
-		fmt.Printf("  sub rsp, 8\n")
-		fmt.Printf("  mov rax, 0\n")
-		fmt.Printf("  call %s\n", string(node.FuncName))
-		fmt.Printf("  add rsp, 8\n")
-		fmt.Printf(".L.end.%s:\n", label)
-		fmt.Printf("  push rax\n")
+		output.F("  mov rax, rsp\n")
+		output.F("  and rax, 15\n")
+		output.F("  jnz .L.call.%s\n", label)
+		output.F("  mov rax, 0\n")
+		output.F("  call %s\n", string(node.Name))
+		output.F("  jmp .L.end.%s\n", label)
+		output.F(".L.call.%s:\n", label)
+		output.F("  sub rsp, 8\n")
+		output.F("  mov rax, 0\n")
+		output.F("  call %s\n", string(node.Name))
+		output.F("  add rsp, 8\n")
+		output.F(".L.end.%s:\n", label)
+		output.F("  push rax\n")
 
 		return nil
 	}
 
-	if err := generate(node.Left); err != nil {
+	if err := genStmt(node.Left); err != nil {
 		return err
 	}
 
-	if err := generate(node.Right); err != nil {
+	if err := genStmt(node.Right); err != nil {
 		return err
 	}
 
-	fmt.Println("  pop rdi")
-	fmt.Println("  pop rax")
+	output.L("  pop rdi")
+	output.L("  pop rax")
 
 	switch node.Kind {
 	case NDAdd:
-		fmt.Println("  add rax, rdi")
+		output.L("  add rax, rdi")
 	case NDSub:
-		fmt.Println("  sub rax, rdi")
+		output.L("  sub rax, rdi")
 	case NDMul:
-		fmt.Println("  imul rax, rdi")
+		output.L("  imul rax, rdi")
 	case NDDiv:
-		fmt.Println("  cqo")
-		fmt.Println("  idiv rdi")
+		output.L("  cqo")
+		output.L("  idiv rdi")
 	case NDEq:
-		fmt.Println("  cmp rax, rdi")
-		fmt.Println("  sete al")
-		fmt.Println("  movzb rax, al")
+		output.L("  cmp rax, rdi")
+		output.L("  sete al")
+		output.L("  movzb rax, al")
 	case NDNe:
-		fmt.Println("  cmp rax, rdi")
-		fmt.Println("  setne al")
-		fmt.Println("  movzb rax, al")
+		output.L("  cmp rax, rdi")
+		output.L("  setne al")
+		output.L("  movzb rax, al")
 	case NDLt:
-		fmt.Println("  cmp rax, rdi")
-		fmt.Println("  setl al")
-		fmt.Println("  movzb rax, al")
+		output.L("  cmp rax, rdi")
+		output.L("  setl al")
+		output.L("  movzb rax, al")
 	case NDLe:
-		fmt.Println("  cmp rax, rdi")
-		fmt.Println("  setle al")
-		fmt.Println("  movzb rax, al")
+		output.L("  cmp rax, rdi")
+		output.L("  setle al")
+		output.L("  movzb rax, al")
 	}
 
-	fmt.Println("  push rax")
+	output.L("  push rax")
 
 	return nil
 }
 
 func generateLocalValue(node *Node) error {
 	if node.Kind != NDLocalV {
-		return userInput.Err(token.Loc, "変数ではありません")
+		return userInput.Err(currentToken.Loc, "変数ではありません")
 	}
 
-	fmt.Println("  mov rax, rbp")
-	fmt.Printf("  sub rax, %d\n", node.Offset)
-	fmt.Println("  push rax")
+	output.L("  mov rax, rbp")
+	output.F("  sub rax, %d\n", node.Offset)
+	output.L("  push rax")
 
 	return nil
-}
-
-func sequel() {
-	fmt.Println("  mov rsp, rbp")
-	fmt.Println("  pop rbp")
-	fmt.Println("  ret")
 }
 
 func uniqueLabel() string {

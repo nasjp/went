@@ -1,157 +1,154 @@
 package main
 
-type NodeKind int
+func parse() (*Node, error) {
+	head := NewNode(NDUndefined, nil, nil)
+	cur := head
 
-const (
-	NDAdd    NodeKind = iota // +
-	NDSub                    // -
-	NDMul                    // *
-	NDDiv                    // /
-	NDEq                     // ==
-	NDNe                     // !=
-	NDLt                     // <
-	NDLe                     // <=
-	NDNum                    // 123
-	NDAssign                 // =
-	NDLocalV                 // ローカル変数
-	NDReturn                 // return
-	NDIf                     // if
-	NDFor                    // if
-	NDBlock                  // {}
-	NDFunc                   // if
-)
+	for !currentToken.AtEOF() {
+		node, err := function()
+		if err != nil {
+			return nil, err
+		}
 
-type Node struct {
-	Kind     NodeKind
-	Left     *Node
-	Right    *Node
-	Cond     *Node
-	Then     *Node
-	Else     *Node
-	Init     *Node
-	Inc      *Node
-	Body     *Node
-	Next     *Node
-	Args     *Node
-	Val      int
-	Offset   int
-	FuncName []rune
-}
-
-func NewNode(kind NodeKind, left *Node, right *Node) *Node {
-	return &Node{
-		Kind:  kind,
-		Left:  left,
-		Right: right,
+		cur.Next = node
+		cur = node
 	}
+
+	return head.Next, nil
 }
 
-func NewNodeNum(val int) *Node {
-	node := NewNode(NDNum, nil, nil)
-	node.Val = val
+func function() (*Node, error) {
+	if err := currentToken.Expect(TKIdent); err != nil {
+		return nil, err
+	}
 
-	return node
+	funcName := currentToken.Str
+
+	proceedToken()
+
+	if err := currentToken.Expect(TKReserved, '('); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	params, err := funcParams()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := currentToken.Expect(TKReserved, '{'); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	head := NewNode(NDLocalV, nil, nil)
+	localValue = head
+	localValue.Root = head
+
+	body, err := block()
+	if err != nil {
+		return nil, err
+	}
+
+	var localNum int
+	for local := head.Next; local != nil; local = local.Next {
+		localNum++
+	}
+
+	return NewNodeFuncDef(funcName, params, body, head.Next, localNum*offsetSize), nil
 }
 
-func NewNodeIdent(offset int) *Node {
-	node := NewNode(NDLocalV, nil, nil)
-	node.Offset = offset
+func funcParams() (*Node, error) {
+	if currentToken.Consume(TKReserved, ')') {
+		proceedToken()
 
-	return node
+		return nil, nil
+	}
+
+	head, err := assign()
+	if err != nil {
+		return nil, err
+	}
+
+	cur := head
+
+	for currentToken.Consume(TKReserved, ',') {
+		proceedToken()
+
+		node, err := assign()
+		if err != nil {
+			return nil, err
+		}
+
+		cur.Next = node
+
+		cur = cur.Next
+	}
+
+	if err := currentToken.Expect(TKReserved, ')'); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	return head, nil
 }
 
-func NewNodeIf(cond *Node, then *Node, els *Node) *Node {
-	node := NewNode(NDIf, nil, nil)
-	node.Cond = cond
-	node.Then = then
-	node.Else = els
+func block() (*Node, error) {
+	node := NewNode(NDBlock, nil, nil)
 
-	return node
-}
+	head := NewNode(NDBlock, nil, nil)
 
-func NewNodeFor(ini *Node, cond *Node, inc *Node, then *Node) *Node {
-	node := NewNode(NDFor, nil, nil)
-	node.Init = ini
-	node.Cond = cond
-	node.Inc = inc
-	node.Then = then
+	cur := head
 
-	return node
-}
-
-func NewNodeFunc(name []rune, args *Node) *Node {
-	node := NewNode(NDFunc, nil, nil)
-	node.FuncName = name
-	node.Args = args
-
-	return node
-}
-
-func program() ([]*Node, error) {
-	code := make([]*Node, 0, 100)
-
-	for !token.AtEOF() {
+	for {
 		node, err := stmt()
 		if err != nil {
 			return nil, err
 		}
 
-		code = append(code, node)
+		cur.Next = node
+		cur = node
+
+		if currentToken.Consume(TKReserved, '}') {
+			proceedToken()
+
+			break
+		}
 	}
 
-	return code, nil
+	node.Body = head.Next
+
+	return node, nil
 }
 
 func stmt() (*Node, error) {
 	switch {
-	case token.Consume(TKReturn):
+	case currentToken.Consume(TKReturn):
 		proceedToken()
 
 		return stmtReturn()
-	case token.Consume(TKIf):
+	case currentToken.Consume(TKIf):
 		proceedToken()
 
 		return stmtIf()
-	case token.Consume(TKFor):
+	case currentToken.Consume(TKFor):
 		proceedToken()
 
 		return stmtFor()
-	case token.Consume(TKReserved, '{'):
+	case currentToken.Consume(TKReserved, '{'):
 		proceedToken()
 
-		node := NewNode(NDBlock, nil, nil)
-
-		var stm *Node
-
-		for {
-			now, err := stmt()
-			if err != nil {
-				return nil, err
-			}
-
-			if stm == nil {
-				stm = now
-				node.Body = now
-			} else {
-				stm.Next = now
-				stm = now
-			}
-
-			if token.Consume(TKReserved, '}') {
-				proceedToken()
-
-				break
-			}
-		}
-
-		return node, nil
+		return block()
 	default:
 		node, err := expr()
 		if err != nil {
 			return nil, err
 		}
 
-		if err := token.Expect(TKReserved, ';'); err != nil {
+		if err := currentToken.Expect(TKReserved, ';'); err != nil {
 			return nil, err
 		}
 
@@ -163,7 +160,7 @@ func stmt() (*Node, error) {
 
 func stmtIf() (*Node, error) {
 	// ブロックスコープができたら削る
-	if err := token.Expect(TKReserved, '('); err != nil {
+	if err := currentToken.Expect(TKReserved, '('); err != nil {
 		return nil, err
 	}
 
@@ -175,7 +172,7 @@ func stmtIf() (*Node, error) {
 	}
 
 	// ブロックスコープができたら削る
-	if err := token.Expect(TKReserved, ')'); err != nil {
+	if err := currentToken.Expect(TKReserved, ')'); err != nil {
 		return nil, err
 	}
 
@@ -188,7 +185,7 @@ func stmtIf() (*Node, error) {
 
 	var els *Node
 
-	if token.Consume(TKElse) {
+	if currentToken.Consume(TKElse) {
 		proceedToken()
 
 		var err error
@@ -210,7 +207,7 @@ func stmtReturn() (*Node, error) {
 
 	node := NewNode(NDReturn, left, nil)
 
-	if err := token.Expect(TKReserved, ';'); err != nil {
+	if err := currentToken.Expect(TKReserved, ';'); err != nil {
 		return nil, err
 	}
 
@@ -221,7 +218,7 @@ func stmtReturn() (*Node, error) {
 
 func stmtFor() (*Node, error) {
 	// ブロックスコープができたら削る
-	if err := token.Expect(TKReserved, '('); err != nil {
+	if err := currentToken.Expect(TKReserved, '('); err != nil {
 		return nil, err
 	}
 
@@ -233,9 +230,7 @@ func stmtFor() (*Node, error) {
 		inc  *Node
 	)
 
-	// firstNext := token.Skip()
-
-	if token.Consume(TKReserved, ';') {
+	if currentToken.Consume(TKReserved, ';') {
 		proceedToken()
 	} else {
 		var err error
@@ -243,14 +238,14 @@ func stmtFor() (*Node, error) {
 			return nil, err
 		}
 
-		if err := token.Expect(TKReserved, ';'); err != nil {
+		if err := currentToken.Expect(TKReserved, ';'); err != nil {
 			return nil, err
 		}
 
 		proceedToken()
 	}
 
-	if token.Consume(TKReserved, ';') {
+	if currentToken.Consume(TKReserved, ';') {
 		proceedToken()
 	} else {
 		var err error
@@ -258,14 +253,14 @@ func stmtFor() (*Node, error) {
 			return nil, err
 		}
 
-		if err := token.Expect(TKReserved, ';'); err != nil {
+		if err := currentToken.Expect(TKReserved, ';'); err != nil {
 			return nil, err
 		}
 
 		proceedToken()
 	}
 
-	if token.Consume(TKReserved, ')') {
+	if currentToken.Consume(TKReserved, ')') {
 		proceedToken()
 	} else {
 		var err error
@@ -273,7 +268,7 @@ func stmtFor() (*Node, error) {
 			return nil, err
 		}
 
-		if err := token.Expect(TKReserved, ')'); err != nil {
+		if err := currentToken.Expect(TKReserved, ')'); err != nil {
 			return nil, err
 		}
 
@@ -298,7 +293,7 @@ func assign() (*Node, error) {
 		return nil, err
 	}
 
-	if token.Consume(TKReserved, '=') {
+	if currentToken.Consume(TKReserved, '=') {
 		proceedToken()
 
 		right, err := equality()
@@ -319,7 +314,7 @@ func equality() (*Node, error) {
 	}
 
 	for {
-		if token.Consume(TKReserved, []rune("==")...) {
+		if currentToken.Consume(TKReserved, []rune("==")...) {
 			proceedToken()
 
 			right, err := relational()
@@ -332,7 +327,7 @@ func equality() (*Node, error) {
 			continue
 		}
 
-		if token.Consume(TKReserved, []rune("!=")...) {
+		if currentToken.Consume(TKReserved, []rune("!=")...) {
 			proceedToken()
 
 			right, err := relational()
@@ -356,7 +351,7 @@ func relational() (*Node, error) {
 	}
 
 	for {
-		if token.Consume(TKReserved, []rune("<")...) {
+		if currentToken.Consume(TKReserved, []rune("<")...) {
 			proceedToken()
 
 			right, err := add()
@@ -369,7 +364,7 @@ func relational() (*Node, error) {
 			continue
 		}
 
-		if token.Consume(TKReserved, []rune("<=")...) {
+		if currentToken.Consume(TKReserved, []rune("<=")...) {
 			proceedToken()
 
 			right, err := add()
@@ -382,7 +377,7 @@ func relational() (*Node, error) {
 			continue
 		}
 
-		if token.Consume(TKReserved, []rune(">")...) {
+		if currentToken.Consume(TKReserved, []rune(">")...) {
 			proceedToken()
 
 			left, err := add()
@@ -395,7 +390,7 @@ func relational() (*Node, error) {
 			continue
 		}
 
-		if token.Consume(TKReserved, []rune(">=")...) {
+		if currentToken.Consume(TKReserved, []rune(">=")...) {
 			proceedToken()
 
 			left, err := add()
@@ -419,7 +414,7 @@ func add() (*Node, error) {
 	}
 
 	for {
-		if token.Consume(TKReserved, '+') {
+		if currentToken.Consume(TKReserved, '+') {
 			proceedToken()
 
 			right, err := mul()
@@ -432,7 +427,7 @@ func add() (*Node, error) {
 			continue
 		}
 
-		if token.Consume(TKReserved, '-') {
+		if currentToken.Consume(TKReserved, '-') {
 			proceedToken()
 
 			right, err := mul()
@@ -456,7 +451,7 @@ func mul() (*Node, error) {
 	}
 
 	for {
-		if token.Consume(TKReserved, '*') {
+		if currentToken.Consume(TKReserved, '*') {
 			proceedToken()
 
 			right, err := unary()
@@ -469,7 +464,7 @@ func mul() (*Node, error) {
 			continue
 		}
 
-		if token.Consume(TKReserved, '/') {
+		if currentToken.Consume(TKReserved, '/') {
 			proceedToken()
 
 			right, err := unary()
@@ -487,13 +482,13 @@ func mul() (*Node, error) {
 }
 
 func unary() (*Node, error) {
-	if token.Consume(TKReserved, '+') {
+	if currentToken.Consume(TKReserved, '+') {
 		proceedToken()
 
 		return unary()
 	}
 
-	if token.Consume(TKReserved, '-') {
+	if currentToken.Consume(TKReserved, '-') {
 		proceedToken()
 
 		node, err := unary()
@@ -508,7 +503,7 @@ func unary() (*Node, error) {
 }
 
 func primary() (*Node, error) {
-	if token.Consume(TKReserved, '(') {
+	if currentToken.Consume(TKReserved, '(') {
 		proceedToken()
 
 		node, err := expr()
@@ -516,7 +511,7 @@ func primary() (*Node, error) {
 			return nil, err
 		}
 
-		if err := token.Expect(TKReserved, ')'); err != nil {
+		if err := currentToken.Expect(TKReserved, ')'); err != nil {
 			return nil, err
 		}
 
@@ -525,11 +520,11 @@ func primary() (*Node, error) {
 		return node, nil
 	}
 
-	if token.ConsumeIdent() {
+	if currentToken.ConsumeIdent() {
 		return ident()
 	}
 
-	n, err := token.ExpectNum()
+	n, err := currentToken.ExpectNum()
 	if err != nil {
 		return nil, err
 	}
@@ -540,8 +535,8 @@ func primary() (*Node, error) {
 }
 
 func ident() (*Node, error) {
-	if token.Skip().Consume(TKReserved, '(') {
-		return identFunc()
+	if currentToken.Skip().Consume(TKReserved, '(') {
+		return identFuncCall()
 	}
 
 	node, err := identVal()
@@ -552,44 +547,41 @@ func ident() (*Node, error) {
 }
 
 func identVal() (*Node, error) {
-	var offset int
-
-	if lval := findLocalValue(token); lval != nil {
-		offset = lval.Offset
-	} else {
-		var localValueOffset int
-		if localValue != nil {
-			localValueOffset = localValue.Offset
-		}
-
-		localValue = NewLocalValue(token, localValueOffset)
-		offset = localValue.Offset
+	if lv := localValue.FindValue(currentToken.Str); lv != nil {
+		return lv, nil
 	}
 
-	return NewNodeIdent(offset), nil
+	node := NewNodeLocalValue(currentToken.Str, localValue.Offset+offsetSize)
+
+	localValue.Next = node
+	node.Root = localValue.Root
+
+	localValue = node
+
+	return node, nil
 }
 
-func identFunc() (*Node, error) {
-	funcName := token.Str
+func identFuncCall() (*Node, error) {
+	funcName := currentToken.Str
 
 	proceedToken()
 
-	if err := token.Expect(TKReserved, '('); err != nil {
+	if err := currentToken.Expect(TKReserved, '('); err != nil {
 		return nil, err
 	}
 
 	proceedToken()
 
-	args, err := funcArgs()
+	args, err := funcCallArgs()
 	if err != nil {
 		return nil, err
 	}
 
-	return NewNodeFunc(funcName, args), nil
+	return NewNodeFuncCall(funcName, args), nil
 }
 
-func funcArgs() (*Node, error) {
-	if token.Consume(TKReserved, ')') {
+func funcCallArgs() (*Node, error) {
+	if currentToken.Consume(TKReserved, ')') {
 		proceedToken()
 
 		return nil, nil
@@ -602,7 +594,7 @@ func funcArgs() (*Node, error) {
 
 	cur := head
 
-	for token.Consume(TKReserved, ',') {
+	for currentToken.Consume(TKReserved, ',') {
 		proceedToken()
 
 		node, err := assign()
@@ -615,7 +607,7 @@ func funcArgs() (*Node, error) {
 		cur = cur.Next
 	}
 
-	if err := token.Expect(TKReserved, ')'); err != nil {
+	if err := currentToken.Expect(TKReserved, ')'); err != nil {
 		return nil, err
 	}
 

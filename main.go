@@ -10,20 +10,24 @@ const (
 )
 
 // 現在着目しているトークン.
-var token *Token
+var currentToken *Token
 
 func proceedToken() {
-	token = token.Next
+	currentToken = currentToken.Next
 }
 
 // ユーザーの入力文字列を保持する.
 var userInput UserInput
 
-// ローカル変数を保持する
-var localValue *LocalValue
-
-// ニーモニックのラベル名を管理する
+// ニーモニックのラベル名を管理する.
 var label int
+
+// local変数保存用
+// 関数ごとに初期化される.
+var localValue *Node
+
+// 出力先
+var output *Writer
 
 func main() {
 	if err := run(); err != nil {
@@ -39,31 +43,27 @@ func run() error {
 		return ErrIncorrectNumberArgument
 	}
 
+	output = NewWriter(os.Stdout)
+
 	p := os.Args[1]
 
 	userInput = UserInput(p)
 
-	var err error
-	if token, err = tokenize(p); err != nil {
-		return err
-	}
-
-	code, err := program()
+	token, err := tokenize(p)
 	if err != nil {
 		return err
 	}
 
-	prequel()
+	currentToken = token
 
-	for _, node := range code {
-		if err := generate(node); err != nil {
-			return err
-		}
-
-		fmt.Println("  pop rax")
+	node, err := parse()
+	if err != nil {
+		return err
 	}
 
-	sequel()
+	if err := generate(node); err != nil {
+		return err
+	}
 
 	return nil
 }

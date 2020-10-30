@@ -12,12 +12,23 @@ const (
 	TKReserved TokenKind = iota // 記号
 	TKReturn                    // return
 	TKIf                        // if
-	TKElse                      // if
+	TKElse                      // else
 	TKFor                       // for
 	TKIdent                     // 識別子
 	TKNum                       // 整数
 	TKEOF                       // 終点
 )
+
+var whatTokens = map[TokenKind]string{
+	TKReserved: "Reserved word",
+	TKReturn:   "return",
+	TKIf:       "if",
+	TKElse:     "else",
+	TKFor:      "for",
+	TKIdent:    "identifier",
+	TKNum:      "number",
+	TKEOF:      "End Of File",
+}
 
 type Token struct {
 	Kind TokenKind
@@ -71,7 +82,11 @@ func (tk *Token) ConsumeIdent() bool {
 // 次のトークンが期待値以外の場合にはエラーを報告する.
 func (tk *Token) Expect(kind TokenKind, op ...rune) error {
 	if !tk.Consume(kind, op...) {
-		return userInput.Err(tk.Loc, fmt.Sprintf("'%s'ではありません", string(op)))
+		if len(op) == 0 {
+			return userInput.Err(tk.Loc, fmt.Sprintf("'%s'ではありません", whatTokens[kind]))
+		}
+
+		return userInput.Err(tk.Loc, fmt.Sprintf("'%s: %s'ではありません", whatTokens[kind], string(op)))
 	}
 
 	return nil
