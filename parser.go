@@ -94,61 +94,11 @@ func stmt() (*Node, error) {
 	case token.Consume(TKReturn):
 		proceedToken()
 
-		left, err := expr()
-		if err != nil {
-			return nil, err
-		}
-
-		node := NewNode(NDReturn, left, nil)
-
-		if err := token.Expect(TKReserved, ';'); err != nil {
-			return nil, err
-		}
-
-		proceedToken()
-
-		return node, nil
+		return stmtReturn()
 	case token.Consume(TKIf):
 		proceedToken()
 
-		// ブロックスコープができたら削る
-		if err := token.Expect(TKReserved, '('); err != nil {
-			return nil, err
-		}
-
-		proceedToken()
-
-		cond, err := expr()
-		if err != nil {
-			return nil, err
-		}
-
-		// ブロックスコープができたら削る
-		if err := token.Expect(TKReserved, ')'); err != nil {
-			return nil, err
-		}
-
-		proceedToken()
-
-		stm, err := stmt()
-		if err != nil {
-			return nil, err
-		}
-
-		var els *Node
-
-		if token.Consume(TKElse) {
-			proceedToken()
-
-			var err error
-			if els, err = stmt(); err != nil {
-				return nil, err
-			}
-		}
-
-		node := NewNodeIf(cond, stm, els)
-
-		return node, nil
+		return stmtIf()
 	case token.Consume(TKFor):
 		proceedToken()
 
@@ -167,6 +117,64 @@ func stmt() (*Node, error) {
 
 		return node, nil
 	}
+}
+
+func stmtIf() (*Node, error) {
+	// ブロックスコープができたら削る
+	if err := token.Expect(TKReserved, '('); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	cond, err := expr()
+	if err != nil {
+		return nil, err
+	}
+
+	// ブロックスコープができたら削る
+	if err := token.Expect(TKReserved, ')'); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	stm, err := stmt()
+	if err != nil {
+		return nil, err
+	}
+
+	var els *Node
+
+	if token.Consume(TKElse) {
+		proceedToken()
+
+		var err error
+		if els, err = stmt(); err != nil {
+			return nil, err
+		}
+	}
+
+	node := NewNodeIf(cond, stm, els)
+
+	return node, nil
+}
+
+func stmtReturn() (*Node, error) {
+	left, err := expr()
+	if err != nil {
+		return nil, err
+	}
+
+	node := NewNode(NDReturn, left, nil)
+
+	if err := token.Expect(TKReserved, ';'); err != nil {
+		return nil, err
+	}
+
+	proceedToken()
+
+	return node, nil
 }
 
 func stmtFor() (*Node, error) {
