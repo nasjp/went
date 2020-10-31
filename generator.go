@@ -4,6 +4,7 @@ import "fmt"
 
 var argReg = []string{"rdi", "rsi", "rdx", "rcx", "r8", "r9"}
 
+// TODO: ABIをGoに合わせる
 func generate(nodes *Node) error {
 	output.L(".intel_syntax noprefix")
 
@@ -55,7 +56,7 @@ func genStmt(node *Node) error {
 
 		return nil
 	case NDLocalV:
-		if err := generateLocalValue(node); err != nil {
+		if err := genLocalValue(node); err != nil {
 			return err
 		}
 
@@ -65,7 +66,7 @@ func genStmt(node *Node) error {
 
 		return nil
 	case NDAssign:
-		if err := generateLocalValue(node.Left); err != nil {
+		if err := genLocalValue(node.Left); err != nil {
 			return err
 		}
 
@@ -200,6 +201,23 @@ func genStmt(node *Node) error {
 		output.F("  push rax\n")
 
 		return nil
+
+	case NDAddress:
+		if err := genLocalValue(node.Left); err != nil {
+			return err
+		}
+
+		return nil
+	case NDDereference:
+		if err := genStmt(node.Left); err != nil {
+			return err
+		}
+
+		output.L("  pop rax")
+		output.L("  mov rax, [rax]")
+		output.L("  push rax")
+
+		return nil
 	}
 
 	if err := genStmt(node.Left); err != nil {
@@ -246,7 +264,7 @@ func genStmt(node *Node) error {
 	return nil
 }
 
-func generateLocalValue(node *Node) error {
+func genLocalValue(node *Node) error {
 	if node.Kind != NDLocalV {
 		return userInput.Err(currentToken.Loc, "変数ではありません")
 	}

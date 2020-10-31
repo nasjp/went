@@ -180,7 +180,8 @@ func tokenize(p string) (*Token, error) {
 			';',
 			'{',
 			'}',
-			',':
+			',',
+			'&':
 			cur = NewToken(TKReserved, cur, i, []rune{rune(p[i])}...)
 
 			continue

@@ -499,6 +499,28 @@ func unary() (*Node, error) {
 		return NewNode(NDSub, NewNodeNum(0), node), nil
 	}
 
+	if currentToken.Consume(TKReserved, '*') {
+		proceedToken()
+
+		node, err := unary()
+		if err != nil {
+			return nil, err
+		}
+
+		return NewNode(NDDereference, node, nil), nil
+	}
+
+	if currentToken.Consume(TKReserved, '&') {
+		proceedToken()
+
+		node, err := unary()
+		if err != nil {
+			return nil, err
+		}
+
+		return NewNode(NDAddress, node, nil), nil
+	}
+
 	return primary()
 }
 

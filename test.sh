@@ -65,5 +65,6 @@ assert 32 'main() { return ret32(); } ret32() { return 32; }'
 assert 7 'main() { return add(3, 4); } add(x, y) { return x + y; }'
 assert 1 'main() { return sub(4, 3); } sub(x, y) { return x - y; }'
 assert 55 'main() { return fib(9); } fib(x) { if (x <= 1) { return 1; } return fib(x - 1) + fib(x - 2); }'
+assert 3 'main() { x = 3; y = &x; return *y; }'
 
 echo OK

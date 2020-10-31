@@ -5,24 +5,26 @@ const offsetSize = 8
 type NodeKind int
 
 const (
-	NDUndefined NodeKind = iota
-	NDAdd                // +
-	NDSub                // -
-	NDMul                // *
-	NDDiv                // /
-	NDEq                 // ==
-	NDNe                 // !=
-	NDLt                 // <
-	NDLe                 // <=
-	NDNum                // 123
-	NDAssign             // =
-	NDLocalV             // ローカル変数
-	NDReturn             // return
-	NDIf                 // if
-	NDFor                // if
-	NDBlock              // {}
-	NDFuncCall           // 関数呼び出し
-	NDFuncDef            // 関数定義
+	NDUndefined   NodeKind = iota
+	NDAdd                  // +
+	NDSub                  // -
+	NDMul                  // *
+	NDDiv                  // /
+	NDEq                   // ==
+	NDNe                   // !=
+	NDLt                   // <
+	NDLe                   // <=
+	NDNum                  // 123
+	NDAssign               // =
+	NDLocalV               // ローカル変数
+	NDReturn               // return
+	NDIf                   // if
+	NDFor                  // if
+	NDBlock                // {}
+	NDFuncCall             // 関数呼び出し
+	NDFuncDef              // 関数定義
+	NDAddress              // *
+	NDDereference          // &
 )
 
 type Node struct {
